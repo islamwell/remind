@@ -1,7 +1,3 @@
-allprojects {
-    project.buildDir = "${rootProject.projectDir}/../build/${project.name}"
-}
-
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
