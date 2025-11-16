@@ -1,6 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.gooddeeds.reminder">
+    xmlns:tools="http://schemas.android.com/tools">
     
     <!-- CRITICAL PERMISSIONS FOR RELIABLE ALARMS -->
     
@@ -164,21 +163,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-            
-        <!-- Disable battery optimization prompt -->
-        <meta-data
-            android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT"
-            android:value="true"/>
-            
-        <!-- High priority for alarms -->
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="alarm_channel"/>
-            
-        <!-- Alarm icon -->
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/ic_notification"/>
     </application>
     
     <!-- Queries for alarm apps -->
