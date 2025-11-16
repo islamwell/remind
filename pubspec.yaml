@@ -1,0 +1,81 @@
+name: good_deeds_reminder
+description: A reliable reminder app for good deeds that works even when phone is locked
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # CRITICAL: Core alarm and notification packages
+  android_alarm_manager_plus: ^4.0.4  # Most reliable for exact alarms
+  flutter_local_notifications: ^17.2.3  # High-priority notifications
+  awesome_notifications: ^0.9.3  # Full-screen intents and critical alerts
+  system_alert_window: ^2.0.0  # Show over lock screen
+  
+  # Wake and power management
+  wakelock_plus: ^1.2.8  # Keep screen awake during alarms
+  
+  # Permissions
+  permission_handler: ^11.3.1  # Request critical permissions
+  
+  # Audio
+  audioplayers: ^6.1.0  # Play alarm sounds
+  record: ^5.1.2  # Record custom voice reminders
+  vibration: ^1.9.0  # Vibration patterns
+  
+  # Storage and state
+  shared_preferences: ^2.3.2  # Store reminder data
+  path_provider: ^2.1.4  # Access file system
+  sqflite: ^2.3.3+2  # Local database for reminders
+  
+  # File handling
+  file_picker: ^8.1.3  # Select custom alarm sounds
+  
+  # UI Components
+  cupertino_icons: ^1.0.8
+  flutter_slidable: ^3.1.1  # Swipeable list items
+  table_calendar: ^3.1.2  # Calendar view for reminders
+  fl_chart: ^0.69.0  # Charts for completion stats
+  
+  # Utilities
+  uuid: ^4.5.1  # Generate unique IDs
+  intl: ^0.19.0  # Date formatting
+  timezone: ^0.9.4  # Timezone handling
+  
+  # Background processing
+  workmanager: ^0.5.2  # Background task scheduling
+  flutter_background_service: ^5.0.10  # Persistent background service
+  
+  # State management (optional but recommended)
+  provider: ^6.1.2
+  
+  # Connectivity (for future sync features)
+  connectivity_plus: ^6.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/sounds/
+    - assets/images/
+  
+  # Fonts for better UI
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Good Deeds Reminder</string>
+    <string name="alarm_notification_channel">Good Deeds Alarms</string>
+    <string name="alarm_notification_description">Reminder notifications for good deeds</string>
+    <string name="complete_button">Complete</string>
+    <string name="snooze_button">Snooze 5 min</string>
+    <string name="dismiss_button">Dismiss</string>
+</resources>
