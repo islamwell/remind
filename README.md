@@ -99,13 +99,25 @@ The app will automatically request permissions on first launch, but users must:
 3. **Allow Exact Alarms** (Android 12+)
    - Settings → Apps → Good Deeds Reminder → Alarms & Reminders → Allow
 
-### 4. Build and Run
+### 4. Choose a Version and Run Locally
+
+You can check out a specific release or branch, install dependencies, and run the app:
 
 ```bash
-# For debug mode
+# List available versions (tags) after pulling the latest metadata
+git fetch --tags
+git tag -l
+
+# Switch to a specific version (replace vX.Y.Z with the tag you want)
+git checkout vX.Y.Z
+
+# Install dependencies for that version
+flutter pub get
+
+# Run on a connected device or emulator (hot-reload capable)
 flutter run
 
-# For release build
+# Build a release APK for device testing
 flutter build apk --release
 ```
 

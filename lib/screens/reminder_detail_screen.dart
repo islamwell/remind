@@ -69,7 +69,11 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
       });
     } else {
       if (reminder.soundPath != null) {
-        await _audioPlayer.play(DeviceFileSource(reminder.soundPath!));
+        if (reminder.soundPath!.startsWith('http')) {
+          await _audioPlayer.play(UrlSource(reminder.soundPath!));
+        } else {
+          await _audioPlayer.play(DeviceFileSource(reminder.soundPath!));
+        }
         setState(() {
           _isPlayingPreview = true;
         });
@@ -81,6 +85,103 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
         });
       }
     }
+  }
+
+  void _logFeedback() {
+    double sliderValue = 4;
+    final controller = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTheme.radiusXLarge),
+        ),
+      ),
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + MediaQuery.of(context).padding.bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.divider,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Log completion feedback',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  Slider(
+                    value: sliderValue,
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    activeColor: AppTheme.primaryGreen,
+                    label: _scoreLabel(sliderValue),
+                    onChanged: (value) => setModalState(() => sliderValue = value),
+                  ),
+                  TextField(
+                    controller: controller,
+                    decoration: InputDecoration(
+                      hintText: 'Notes or reflections (optional)',
+                      filled: true,
+                      fillColor: AppTheme.background,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                        borderSide: BorderSide(color: AppTheme.border),
+                      ),
+                    ),
+                    maxLines: 2,
+                  ),
+                  SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      final feedback = reminder.markCompleted(
+                        mood: _scoreLabel(sliderValue),
+                        note: controller.text,
+                      );
+                      await LoggingService.logCompletion(
+                        reminder.id,
+                        reminder.title,
+                        additionalData: {
+                          'mood': feedback.mood,
+                          'note': feedback.note,
+                          'score': sliderValue,
+                        },
+                      );
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Feedback logged for ${reminder.title}'),
+                          backgroundColor: AppTheme.success,
+                        ),
+                      );
+                    },
+                    icon: Icon(Icons.check_circle_outline),
+                    label: Text('Mark complete'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    ).whenComplete(controller.dispose);
   }
   
   @override
@@ -238,7 +339,21 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       ],
                     ),
                   ),
-                  
+
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: FilledButton.icon(
+                      onPressed: _logFeedback,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppTheme.primaryGreen,
+                        minimumSize: Size(double.infinity, 48),
+                      ),
+                      icon: Icon(Icons.check_circle_outline),
+                      label: Text('Complete + log feedback'),
+                    ),
+                  ),
+                  SizedBox(height: 12),
+
                   // Audio File Section
                   if (reminder.soundPath != null || reminder.recordedVoicePath != null)
                     Column(
@@ -404,7 +519,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                   ),
                   
                   // History Section
-                  if (reminder.completionHistory.isNotEmpty)
+                  if (reminder.feedbackHistory.isNotEmpty || reminder.completionHistory.isNotEmpty)
                     Column(
                       children: [
                         Divider(height: 1),
@@ -416,7 +531,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                               Row(
                                 children: [
                                   Text(
-                                    'Recent Completions',
+                                    'History & feedback',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
@@ -424,41 +539,52 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                                     ),
                                   ),
                                   Spacer(),
-                                  TextButton(
-                                    onPressed: () {},
-                                    child: Text(
-                                      'View All',
-                                      style: TextStyle(
-                                        color: AppTheme.primaryGreen,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
+                                  Text('${reminder.feedbackHistory.length} logged', style: TextStyle(color: AppTheme.textSecondary)),
                                 ],
                               ),
                               SizedBox(height: 12),
-                              ...reminder.completionHistory
-                                .take(5)
-                                .map((date) => Padding(
-                                  padding: EdgeInsets.only(bottom: 8),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.check_circle,
-                                        size: 16,
-                                        color: AppTheme.success,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        '${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: AppTheme.textSecondary,
+                              ...(reminder.feedbackHistory.isNotEmpty
+                                      ? reminder.feedbackHistory
+                                      : reminder.completionHistory
+                                          .map((date) => ReminderFeedback(
+                                                completed: true,
+                                                timestamp: date,
+                                                mood: 'Completed',
+                                                note: null,
+                                              )))
+                                  .take(5)
+                                  .map((entry) => Padding(
+                                        padding: EdgeInsets.only(bottom: 10),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Icon(Icons.check_circle, size: 16, color: AppTheme.success),
+                                            SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '${entry.timestamp.day}/${entry.timestamp.month}/${entry.timestamp.year} · ${entry.mood ?? 'Completed'}',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w600,
+                                                      color: AppTheme.textPrimary,
+                                                    ),
+                                                  ),
+                                                  if (entry.note != null && entry.note!.isNotEmpty)
+                                                    Padding(
+                                                      padding: EdgeInsets.only(top: 4),
+                                                      child: Text(
+                                                        entry.note!,
+                                                        style: TextStyle(color: AppTheme.textSecondary),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                )),
+                                      )),
                             ],
                           ),
                         ),
@@ -577,6 +703,14 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
       default:
         return 'Custom';
     }
+  }
+
+  String _scoreLabel(double value) {
+    if (value >= 4.5) return 'Energised';
+    if (value >= 3.5) return 'Positive';
+    if (value >= 2.5) return 'Neutral';
+    if (value >= 1.5) return 'Tired';
+    return 'Exhausted';
   }
   
   void _showOptionsMenu(BuildContext context) {

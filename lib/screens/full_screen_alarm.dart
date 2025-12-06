@@ -107,7 +107,11 @@ class _FullScreenAlarmScreenState extends State<FullScreenAlarmScreen>
       await _audioPlayer.setVolume(1.0); // Maximum volume
       
       if (_reminder?.soundPath != null) {
-        await _audioPlayer.play(DeviceFileSource(_reminder!.soundPath!));
+        if (_reminder!.soundPath!.startsWith('http')) {
+          await _audioPlayer.play(UrlSource(_reminder!.soundPath!));
+        } else {
+          await _audioPlayer.play(DeviceFileSource(_reminder!.soundPath!));
+        }
       } else if (_reminder?.recordedVoicePath != null) {
         await _audioPlayer.play(DeviceFileSource(_reminder!.recordedVoicePath!));
       } else {
