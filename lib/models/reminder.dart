@@ -1,6 +1,38 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 
+class ReminderFeedback {
+  final bool completed;
+  final String? mood;
+  final String? note;
+  final DateTime timestamp;
+
+  const ReminderFeedback({
+    required this.completed,
+    this.mood,
+    this.note,
+    required this.timestamp,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'completed': completed,
+      'mood': mood,
+      'note': note,
+      'timestamp': timestamp.toIso8601String(),
+    };
+  }
+
+  factory ReminderFeedback.fromMap(Map<String, dynamic> map) {
+    return ReminderFeedback(
+      completed: map['completed'] ?? true,
+      mood: map['mood'],
+      note: map['note'],
+      timestamp: DateTime.parse(map['timestamp']),
+    );
+  }
+}
+
 enum ReminderFrequency {
   once,
   daily,
@@ -36,6 +68,7 @@ class Reminder {
   ReminderCategory category;
   Map<String, dynamic>? customData;
   List<DateTime> completionHistory;
+  List<ReminderFeedback> feedbackHistory;
   int snoozeCount;
   DateTime createdAt;
   DateTime updatedAt;
@@ -57,14 +90,16 @@ class Reminder {
     ReminderCategory? category,
     this.customData,
     List<DateTime>? completionHistory,
+    List<ReminderFeedback>? feedbackHistory,
     this.snoozeCount = 0,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) : 
+  }) :
     id = id ?? DateTime.now().millisecondsSinceEpoch.toString(),
     icon = icon ?? Icons.notifications,
     category = category ?? ReminderCategory.personal,
     completionHistory = completionHistory ?? [],
+    feedbackHistory = feedbackHistory ?? [],
     createdAt = createdAt ?? DateTime.now(),
     updatedAt = updatedAt ?? DateTime.now() {
       // Calculate initial next alarm time
@@ -160,10 +195,19 @@ class Reminder {
   }
   
   /// Mark reminder as completed
-  void markCompleted() {
-    completionHistory.add(DateTime.now());
+  ReminderFeedback markCompleted({String? mood, String? note}) {
+    final now = DateTime.now();
+    completionHistory.add(now);
     snoozeCount = 0; // Reset snooze count
+    final feedback = ReminderFeedback(
+      completed: true,
+      mood: mood,
+      note: note,
+      timestamp: now,
+    );
+    feedbackHistory.add(feedback);
     updateNextAlarmTime();
+    return feedback;
   }
   
   /// Snooze the reminder
@@ -185,11 +229,31 @@ class Reminder {
     } else if (diff.inHours < 24) {
       return "In ${diff.inHours} hours";
     } else if (diff.inDays == 1) {
-      return "Tomorrow at ${TimeOfDay.fromDateTime(nextAlarmTime!).format(null)}";
+      return "Tomorrow at ${_formatTimeOfDay(TimeOfDay.fromDateTime(nextAlarmTime!))}";
     } else if (diff.inDays < 7) {
       return "In ${diff.inDays} days";
     } else {
-      return "${nextAlarmTime!.day}/${nextAlarmTime!.month} at ${TimeOfDay.fromDateTime(nextAlarmTime!).format(null)}";
+      final formatted = _formatTimeOfDay(TimeOfDay.fromDateTime(nextAlarmTime!));
+      return "${nextAlarmTime!.day}/${nextAlarmTime!.month} at $formatted";
+    }
+  }
+
+  /// Friendly summary of recurrence
+  String recurrenceLabel() {
+    switch (frequency) {
+      case ReminderFrequency.daily:
+        return 'Repeats daily at ${_formatTimeOfDay(scheduledTime ?? TimeOfDay.now())}';
+      case ReminderFrequency.weekly:
+        final days = weekDays?.map((d) => _weekdayAbbrev(d)).join(', ') ?? 'week';
+        return 'Weekly on $days';
+      case ReminderFrequency.monthly:
+        return 'Monthly on day ${dayOfMonth ?? 1}';
+      case ReminderFrequency.interval:
+        return 'Every ${intervalMinutes ?? 20} minutes';
+      case ReminderFrequency.once:
+        return 'One-time reminder';
+      default:
+        return 'Custom schedule';
     }
   }
   
@@ -269,6 +333,7 @@ class Reminder {
       'category': category.index,
       'customData': customData,
       'completionHistory': completionHistory.map((d) => d.toIso8601String()).toList(),
+      'feedbackHistory': feedbackHistory.map((f) => f.toMap()).toList(),
       'snoozeCount': snoozeCount,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -306,6 +371,10 @@ class Reminder {
       completionHistory: (data['completionHistory'] as List)
         .map((d) => DateTime.parse(d))
         .toList(),
+      feedbackHistory: (data['feedbackHistory'] as List?)
+        ?.map((d) => ReminderFeedback.fromMap(Map<String, dynamic>.from(d)))
+        .toList() ??
+        [],
       snoozeCount: data['snoozeCount'],
       createdAt: DateTime.parse(data['createdAt']),
       updatedAt: DateTime.parse(data['updatedAt']),
@@ -340,6 +409,19 @@ class Reminder {
       default:
         return ReminderCategory.personal;
     }
+  }
+
+  String _formatTimeOfDay(TimeOfDay timeOfDay) {
+    final hour = timeOfDay.hourOfPeriod == 0 ? 12 : timeOfDay.hourOfPeriod;
+    final minute = timeOfDay.minute.toString().padLeft(2, '0');
+    final suffix = timeOfDay.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $suffix';
+  }
+
+  String _weekdayAbbrev(int day) {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    if (day < 1 || day > 7) return 'Day';
+    return names[day - 1];
   }
 }
 

@@ -19,6 +19,7 @@ class _ModernMainScreenState extends State<ModernMainScreen> {
   List<Reminder> reminders = [];
   final LoggingService logger = LoggingService();
   String searchQuery = '';
+  String _selectedFilter = 'all';
   
   // Sample data for demonstration
   @override
@@ -86,18 +87,42 @@ class _ModernMainScreenState extends State<ModernMainScreen> {
     // Handle notification actions
   }
   
-  List<Reminder> get activeReminders => 
+  List<Reminder> get activeReminders =>
       reminders.where((r) => r.isActive).toList();
-  
-  List<Reminder> get pausedReminders => 
+
+  List<Reminder> get pausedReminders =>
       reminders.where((r) => !r.isActive).toList();
+
+  List<Reminder> get activeFilteredReminders =>
+      filteredReminders.where((r) => r.isActive).toList();
+
+  List<Reminder> get pausedFilteredReminders =>
+      filteredReminders.where((r) => !r.isActive).toList();
   
   List<Reminder> get filteredReminders {
-    if (searchQuery.isEmpty) return reminders;
-    return reminders.where((r) => 
-      r.title.toLowerCase().contains(searchQuery.toLowerCase()) ||
-      r.description.toLowerCase().contains(searchQuery.toLowerCase())
-    ).toList();
+    Iterable<Reminder> results = reminders;
+
+    if (searchQuery.isNotEmpty) {
+      results = results.where((r) =>
+          r.title.toLowerCase().contains(searchQuery.toLowerCase()) ||
+          r.description.toLowerCase().contains(searchQuery.toLowerCase()));
+    }
+
+    switch (_selectedFilter) {
+      case 'active':
+        results = results.where((r) => r.isActive);
+        break;
+      case 'paused':
+        results = results.where((r) => !r.isActive);
+        break;
+      case 'recurring':
+        results = results.where((r) => r.frequency != ReminderFrequency.once);
+        break;
+      default:
+        break;
+    }
+
+    return results.toList();
   }
   
   void _toggleReminder(Reminder reminder, bool value) async {
@@ -133,6 +158,178 @@ class _ModernMainScreenState extends State<ModernMainScreen> {
               AlarmService.scheduleReminder(reminder);
             }
           },
+        ),
+      ),
+    );
+  }
+
+  void _completeReminder(Reminder reminder) {
+    final TextEditingController notesController = TextEditingController();
+    double score = 4;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTheme.radiusXLarge),
+        ),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + MediaQuery.of(context).padding.bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppTheme.divider,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'How did it go?',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text('Log feedback to improve your streaks.', style: TextStyle(color: AppTheme.textSecondary)),
+                  SizedBox(height: 16),
+                  Text('Feeling', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                  Slider(
+                    value: score,
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    activeColor: AppTheme.primaryGreen,
+                    label: _scoreLabel(score),
+                    onChanged: (value) {
+                      setModalState(() => score = value);
+                    },
+                  ),
+                  SizedBox(height: 8),
+                  TextField(
+                    controller: notesController,
+                    decoration: InputDecoration(
+                      hintText: 'Add a quick note (optional)',
+                      filled: true,
+                      fillColor: AppTheme.background,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                        borderSide: BorderSide(color: AppTheme.border),
+                      ),
+                    ),
+                    maxLines: 2,
+                  ),
+                  SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      final feedback = reminder.markCompleted(
+                        mood: _scoreLabel(score),
+                        note: notesController.text,
+                      );
+                      await LoggingService.logCompletion(
+                        reminder.id,
+                        reminder.title,
+                        additionalData: {
+                          'mood': feedback.mood,
+                          'note': feedback.note,
+                          'score': score,
+                        },
+                      );
+                      if (reminder.isActive) {
+                        reminder.updateNextAlarmTime();
+                        await AlarmService.scheduleReminder(reminder);
+                      }
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Logged feedback for ${reminder.title}'),
+                          backgroundColor: AppTheme.success,
+                        ),
+                      );
+                    },
+                    icon: Icon(Icons.check_circle_outline),
+                    label: Text('Mark complete and log'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen,
+                      minimumSize: Size(double.infinity, 48),
+                    ),
+                  )
+                ],
+              ),
+            );
+          },
+        );
+      },
+    ).whenComplete(() => notesController.dispose());
+  }
+
+  void _pauseAll(bool pause) async {
+    for (final reminder in reminders) {
+      reminder.isActive = !pause;
+      if (pause) {
+        await AlarmService.cancelReminder(reminder.id);
+      } else {
+        await AlarmService.scheduleReminder(reminder);
+      }
+    }
+    setState(() {});
+    LoggingService.logStatic(
+      pause ? 'Paused all reminders' : 'Resumed all reminders',
+      LogLevel.info,
+    );
+  }
+
+  String _scoreLabel(double value) {
+    if (value >= 4.5) return 'Energised';
+    if (value >= 3.5) return 'Positive';
+    if (value >= 2.5) return 'Neutral';
+    if (value >= 1.5) return 'Tired';
+    return 'Exhausted';
+  }
+
+  Widget _buildFilterChip(String label, String value) {
+    final isSelected = _selectedFilter == value;
+    return InkWell(
+      onTap: () => setState(() => _selectedFilter = value),
+      borderRadius: BorderRadius.circular(AppTheme.radiusRound),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryGreen : AppTheme.background,
+          borderRadius: BorderRadius.circular(AppTheme.radiusRound),
+          border: Border.all(color: isSelected ? AppTheme.primaryGreen : AppTheme.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.circle,
+              size: 10,
+              color: isSelected ? Colors.white : AppTheme.textSecondary,
+            ),
+            SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : AppTheme.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -240,39 +437,106 @@ class _ModernMainScreenState extends State<ModernMainScreen> {
             ),
           ),
           
-          // Stats Cards (Optional - can be toggled)
-          if (false) // Set to true to show stats
           SliverToBoxAdapter(
             child: Container(
-              height: 120,
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              color: AppTheme.surface,
+              child: Column(
                 children: [
-                  Expanded(
-                    child: StatCard(
-                      title: 'Completed',
-                      value: stats['completed'].toString(),
-                      icon: Icons.check_circle_outline,
-                      color: AppTheme.success,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: StatCard(
+                          title: 'Completed',
+                          value: stats['completed'].toString(),
+                          icon: Icons.check_circle_outline,
+                          color: AppTheme.success,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: StatCard(
+                          title: 'Active',
+                          value: activeReminders.length.toString(),
+                          icon: Icons.play_circle,
+                          color: AppTheme.info,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: StatCard(
+                          title: 'Streak',
+                          value: '${stats['streak']}d',
+                          icon: Icons.local_fire_department,
+                          color: AppTheme.warning,
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: StatCard(
-                      title: 'Streak',
-                      value: '${stats['streak']} days',
-                      icon: Icons.local_fire_department,
-                      color: AppTheme.warning,
-                    ),
+                  SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryGreen,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          onPressed: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => AddReminderScreen()),
+                            );
+                            if (result != null && result is Reminder) {
+                              setState(() => reminders.add(result));
+                            }
+                          },
+                          icon: Icon(Icons.add_circle_outline),
+                          label: Text('New recurring reminder'),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: AppTheme.border),
+                          ),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => LogsScreen()),
+                          ),
+                          icon: Icon(Icons.insights, color: AppTheme.textPrimary),
+                          label: Text('History & stats'),
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: StatCard(
-                      title: 'Success',
-                      value: '${stats['successRate']}%',
-                      icon: Icons.trending_up,
-                      color: AppTheme.info,
-                    ),
+                  SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _buildFilterChip('All', 'all'),
+                      SizedBox(width: 8),
+                      _buildFilterChip('Active', 'active'),
+                      SizedBox(width: 8),
+                      _buildFilterChip('Paused', 'paused'),
+                      SizedBox(width: 8),
+                      _buildFilterChip('Recurring', 'recurring'),
+                      Spacer(),
+                      IconButton(
+                        onPressed: () => _pauseAll(pausedReminders.length != reminders.length),
+                        icon: Icon(
+                          pausedReminders.length == reminders.length
+                              ? Icons.play_circle_fill
+                              : Icons.pause_circle_filled,
+                          color: AppTheme.textPrimary,
+                        ),
+                        tooltip: pausedReminders.length == reminders.length
+                            ? 'Resume all reminders'
+                            : 'Pause all reminders',
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -280,7 +544,7 @@ class _ModernMainScreenState extends State<ModernMainScreen> {
           ),
           
           // Active Reminders Section
-          if (activeReminders.isNotEmpty)
+          if (activeFilteredReminders.isNotEmpty)
             SliverToBoxAdapter(
               child: Container(
                 margin: EdgeInsets.only(top: 8),
@@ -328,19 +592,20 @@ class _ModernMainScreenState extends State<ModernMainScreen> {
                       ],
                     ),
                     Text(
-                      '${activeReminders.length} reminders',
+                      '${activeFilteredReminders.length} reminders',
                       style: TextStyle(
                         fontSize: 14,
                         color: AppTheme.textSecondary,
                       ),
                     ),
                     SizedBox(height: 16),
-                    ...activeReminders.map((reminder) => Padding(
+                    ...activeFilteredReminders.map((reminder) => Padding(
                       padding: EdgeInsets.only(bottom: 12),
                       child: ModernReminderCard(
                         reminder: reminder,
                         onToggle: (value) => _toggleReminder(reminder, value),
                         onDelete: () => _deleteReminder(reminder),
+                        onComplete: () => _completeReminder(reminder),
                         onTap: () => _showReminderDetails(reminder),
                       ),
                     )),
@@ -348,16 +613,16 @@ class _ModernMainScreenState extends State<ModernMainScreen> {
                 ),
               ),
             ),
-          
+
           // Paused Reminders Section
-          if (pausedReminders.isNotEmpty)
+          if (pausedFilteredReminders.isNotEmpty)
             SliverToBoxAdapter(
               child: Container(
-                margin: EdgeInsets.only(top: activeReminders.isEmpty ? 8 : 16),
+                margin: EdgeInsets.only(top: activeFilteredReminders.isEmpty ? 8 : 16),
                 padding: EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: AppTheme.surface,
-                  borderRadius: activeReminders.isEmpty 
+                  borderRadius: activeFilteredReminders.isEmpty
                     ? BorderRadius.only(
                         topLeft: Radius.circular(AppTheme.radiusXLarge),
                         topRight: Radius.circular(AppTheme.radiusXLarge),
@@ -400,19 +665,20 @@ class _ModernMainScreenState extends State<ModernMainScreen> {
                       ],
                     ),
                     Text(
-                      '${pausedReminders.length} reminder${pausedReminders.length > 1 ? 's' : ''}',
+                      '${pausedFilteredReminders.length} reminder${pausedFilteredReminders.length > 1 ? 's' : ''}',
                       style: TextStyle(
                         fontSize: 14,
                         color: AppTheme.textSecondary,
                       ),
                     ),
                     SizedBox(height: 16),
-                    ...pausedReminders.map((reminder) => Padding(
+                    ...pausedFilteredReminders.map((reminder) => Padding(
                       padding: EdgeInsets.only(bottom: 12),
                       child: ModernReminderCard(
                         reminder: reminder,
                         onToggle: (value) => _toggleReminder(reminder, value),
                         onDelete: () => _deleteReminder(reminder),
+                        onComplete: () => _completeReminder(reminder),
                         onTap: () => _showReminderDetails(reminder),
                       ),
                     )),
@@ -582,13 +848,15 @@ class ModernReminderCard extends StatelessWidget {
   final Reminder reminder;
   final Function(bool) onToggle;
   final VoidCallback onDelete;
+  final VoidCallback onComplete;
   final VoidCallback onTap;
-  
+
   const ModernReminderCard({
     Key? key,
     required this.reminder,
     required this.onToggle,
     required this.onDelete,
+    required this.onComplete,
     required this.onTap,
   }) : super(key: key);
   
@@ -685,6 +953,15 @@ class ModernReminderCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      SizedBox(height: 4),
+                      Text(
+                        reminder.recurrenceLabel(),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -735,6 +1012,88 @@ class ModernReminderCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ],
+            ),
+            SizedBox(height: 12),
+            Row(
+              children: [
+                if (reminder.soundPath != null)
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.info.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusRound),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.library_music, size: 14, color: AppTheme.info),
+                        SizedBox(width: 6),
+                        Text(
+                          reminder.soundPath!.startsWith('http')
+                              ? 'EveryAyah MP3'
+                              : 'Custom audio',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.info,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (reminder.feedbackHistory.isNotEmpty) ...[
+                  if (reminder.soundPath != null) SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.success.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.rate_review, size: 14, color: AppTheme.success),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Last feedback: ${reminder.feedbackHistory.last.mood ?? 'Logged'}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textPrimary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onComplete,
+                    icon: Icon(Icons.check_circle_outline, color: AppTheme.primaryGreen),
+                    label: Text(
+                      'Log feedback',
+                      style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppTheme.border),
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  onPressed: onDelete,
+                  icon: Icon(Icons.delete_outline, color: AppTheme.error),
                 ),
               ],
             ),
